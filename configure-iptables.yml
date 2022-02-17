@@ -1,31 +1,40 @@
 ---
 - name: configure iptables
-  hosts: prod_app_servers:test_app_servers
+  hosts: prod_app_servers:dev_app_servers
+  vars:
+    app_port_range: "50000:50099"
+    extended_port_range: "50100:50199"
   tasks:
+
   - name: check iptables exists
     become: yes
     apt:
       package: iptables
       state: present
+
   - name: temporary accept all chains traffic
     become: yes
     iptables:
+      table: filter
       chain: '{{ item }}'
       policy: ACCEPT
-    with_items: ['INPUT', 'OUTPUT', 'FORWARD']
+    loop: ['INPUT', 'OUTPUT', 'FORWARD']
+
   - name: flush filter
     become: yes
     iptables:
       table: filter
       chain: '{{ item }}'
       flush: yes
-    with_items: ['INPUT', 'OUTPUT', 'FORWARD']
+    loop: ['INPUT', 'OUTPUT', 'FORWARD']
+
   - name: established/related
     become: yes
     iptables:
       chain: INPUT
       ctstate: ESTABLISHED,RELATED
       jump: ACCEPT
+
   - name: allow loopback traffic
     become: yes
     iptables:
@@ -33,7 +42,8 @@
       chain: INPUT
       in_interface: lo
       jump: ACCEPT
-  - name: allow ssh, tcp dns, http, https
+
+  - name: allow ssh, tcp dns
     become: yes
     iptables:
       chain: INPUT
@@ -41,9 +51,8 @@
       destination_ports:
       - '22'
       - '53'
-      - '80'
-      - '443'
       jump: ACCEPT
+
   - name: allow udp dns
     become: yes
     iptables:
@@ -51,6 +60,7 @@
       protocol: udp
       destination_port: '53'
       jump: ACCEPT
+
   - name: allow dhcp offer and acknowledge
     become: yes
     iptables:
@@ -59,6 +69,7 @@
       source_port: '67'
       destination_port: '68'
       jump: ACCEPT
+
   - name: allow icmp echo requests
     become: yes
     iptables:
@@ -66,9 +77,26 @@
       protocol: icmp
       icmp_type: '8'
       jump: ACCEPT
+
+  - name: allow web apps traffic
+    become: yes
+    iptables:
+      chain: INPUT
+      protocol: tcp
+      destination_ports: '{{ app_port_range }}'
+      jump: ACCEPT
+
+  - name: allow extended services traffic
+    become: yes
+    iptables:
+      chain: INPUT
+      protocol: tcp
+      destination_ports: '{{ extended_port_range }}'
+      jump: ACCEPT
+
   - name: default DORWARD and INPUT drop
     become: yes
     iptables:
       chain: '{{ item }}'
       policy: DROP
-    with_items: ['INPUT', 'FORWARD']
+    loop: ['INPUT', 'FORWARD']

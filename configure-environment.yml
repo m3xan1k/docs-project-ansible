@@ -1,7 +1,11 @@
 ---
 - name: install environment
-  hosts: prod_app_servers
+  hosts: prod_app_servers:dev_app_servers
+  vars:
+    DOCKER_USERS: ['osboxes']
+    COMPOSE_VERSION: "2.2.2"
   tasks:
+
   - name: install linux dependencies
     become: yes
     apt:
@@ -12,37 +16,41 @@
       - gnupg2
       - software-properties-common
       update_cache: yes
+
   - name: install docker repo key
     become: yes
     apt_key:
       url: https://download.docker.com/linux/debian/gpg
       state: present
+
   - name: add docker repo
     become: yes
     shell: add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/debian $(lsb_release -cs) stable"
     args:
       executable: /bin/bash
+
   - name: install docker
     become: yes
     apt:
       name: docker-ce
       state: latest
       update_cache: yes
+
   - name: add users to docker group
     become: yes
     user:
       name: "{{ item }}"
       state: present
       group: docker
-    loop:
-      - osboxes
+    loop: "{{ DOCKER_USERS }}"
+
   - name: download docker-compose binary
     become: yes
     uri:
-      url: "https://github.com/docker/compose/releases/download/v{{ compose_version }}/docker-compose-Linux-x86_64"
+      url: "https://github.com/docker/compose/releases/download/v{{ COMPOSE_VERSION }}/docker-compose-Linux-x86_64"
       dest: /usr/local/bin/docker-compose
-    vars:
-      compose_version: "2.2.2"
+      status_code: [200, 304]
+
   - name: set docker-compose permissions
     become: yes
     file:
