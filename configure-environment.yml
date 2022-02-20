@@ -1,21 +1,36 @@
 ---
 - name: install environment
   hosts: prod_app_servers:dev_app_servers
-  vars:
-    DOCKER_USERS: ['osboxes']
-    COMPOSE_VERSION: "2.2.2"
+  vars_files:
+    - vars/vars.configure-environment.yml
   tasks:
 
   - name: install linux dependencies
     become: yes
     apt:
       pkg:
+      - acl
       - apt-transport-https
       - ca-certificates
       - curl
       - gnupg2
       - software-properties-common
+      - git
+      - build-essential
+      - python3-pip
       update_cache: yes
+
+  - name: stop apache
+    become: yes
+    service:
+      name: apache2
+      state: stopped
+
+  - name:
+    become: yes
+    apt:
+      name: apache2
+      state: absent
 
   - name: install docker repo key
     become: yes

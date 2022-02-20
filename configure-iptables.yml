@@ -1,9 +1,8 @@
 ---
 - name: configure iptables
   hosts: prod_app_servers:dev_app_servers
-  vars:
-    app_port_range: "50000:50099"
-    extended_port_range: "50100:50199"
+  vars_files:
+    - vars/vars.configure-iptables.yml
   tasks:
 
   - name: check iptables exists
@@ -83,7 +82,7 @@
     iptables:
       chain: INPUT
       protocol: tcp
-      destination_ports: '{{ app_port_range }}'
+      destination_ports: '{{ APP_PORT_RANGE }}'
       jump: ACCEPT
 
   - name: allow extended services traffic
@@ -91,7 +90,7 @@
     iptables:
       chain: INPUT
       protocol: tcp
-      destination_ports: '{{ extended_port_range }}'
+      destination_ports: '{{ EXTENDED_PORT_RANGE }}'
       jump: ACCEPT
 
   - name: default DORWARD and INPUT drop

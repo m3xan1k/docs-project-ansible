@@ -1,0 +1,119 @@
+---
+- name: create app user
+  hosts: dev_app_servers
+  vars_files:
+    - vars/vars.docs.yml
+  tasks:
+    - name: check vars
+      debug:
+        msg: '{{ NGINX_EXTERNAL_PORT }}'
+      register: nginx_external_port
+      failed_when: nginx_external_port.msg == ''
+    - name: create app user
+      become: yes
+      user:
+        name: app_runner
+        comment: application user
+        groups: ['docker', 'sudo']
+    - name: allow nginx application external port
+      become: yes
+      iptables:
+        chain: INPUT
+        protocol: tcp
+        destination_port: '{{ NGINX_EXTERNAL_PORT }}'
+        jump: ACCEPT
+
+- name: deploy docs app
+  hosts: dev_app_servers
+  become: yes
+  become_user: app_runner
+  vars_files:
+    - vars/vars.docs.yml
+  tasks:
+
+    - name: install python-docker
+      pip:
+        name:
+          - docker
+          - docker-compose
+
+    - name: pull repo
+      git:
+        repo: 'https://{{ GITHUB_USER }}:{{ GITHUB_TOKEN }}@github.com/gonzo-web/docs.git'
+        dest: /home/app_runner/docs
+        version: master
+        single_branch: yes
+        update: yes
+
+    - name: create .env on remote host
+      shell:
+        cmd: |
+          echo "ANSIBLE_SUDO_PASS={{ ANSIBLE_SUDO_PASS }}" >> {{ DOTENV_PATH }}
+          echo "GITHUB_USER={{ GITHUB_USER }}" >> {{ DOTENV_PATH }}
+          echo "GITHUB_TOKEN={{ GITHUB_TOKEN }}" >> {{ DOTENV_PATH }}
+          echo "DJANGO_SUPERUSER_USERNAME={{ DJANGO_SUPERUSER_USERNAME }}" >> {{ DOTENV_PATH }}
+          echo "DJANGO_SUPERUSER_PASSWORD={{ DJANGO_SUPERUSER_PASSWORD }}" >> {{ DOTENV_PATH }}
+          echo "DJANGO_SUPERUSER_EMAIL={{ DJANGO_SUPERUSER_EMAIL }}" >> {{ DOTENV_PATH }}
+          echo "PROJECT_NAME={{ PROJECT_NAME }}" >> {{ DOTENV_PATH }}
+          echo "IMAGE={{ IMAGE }}" >> {{ DOTENV_PATH }}
+          echo "SECRET_KEY={{ SECRET_KEY }}" >> {{ DOTENV_PATH }}
+          echo "DJANGO_PORT={{ DJANGO_PORT }}" >> {{ DOTENV_PATH }}
+          echo "POSTGRES_DB={{ POSTGRES_DB }}" >> {{ DOTENV_PATH }}
+          echo "POSTGRES_USER={{ POSTGRES_USER }}" >> {{ DOTENV_PATH }}
+          echo "POSTGRES_PASSWORD={{ POSTGRES_PASSWORD }}" >> {{ DOTENV_PATH }}
+          echo "POSTGRES_HOST={{ POSTGRES_HOST }}" >> {{ DOTENV_PATH }}
+          echo "POSTGRES_PORT={{ POSTGRES_PORT }}" >> {{ DOTENV_PATH }}
+          echo "NGINX_EXTERNAL_PORT={{ NGINX_EXTERNAL_PORT }}" >> {{ DOTENV_PATH }}
+          echo "NGINX_INTERNAL_PORT={{ NGINX_INTERNAL_PORT }}" >> {{ DOTENV_PATH }}
+
+    - name: login to docker registry
+      community.docker.docker_login:
+        registry: docker.pkg.github.com
+        username: '{{ GITHUB_USER }}'
+        password: '{{ GITHUB_TOKEN }}'
+        reauthorize: yes
+
+    - name: pull django image
+      community.docker.docker_image:
+        name: '{{ IMAGE }}:django'
+        source: pull
+
+    - name: pull nginx image
+      community.docker.docker_image:
+        name: '{{ IMAGE }}:nginx'
+        source: pull
+
+    - name: stop container services
+      community.docker.docker_compose:
+        project_src: /home/app_runner/docs
+        state: absent
+        files:
+          - docker-compose.ci.yml
+
+    - name: start container services
+      community.docker.docker_compose:
+        project_src: /home/app_runner/docs
+        build: no
+        files:
+          - docker-compose.ci.yml
+
+    - name: collect django container static files
+      community.docker.docker_container_exec:
+        container: '{{ PROJECT_NAME }}_django'
+        command: python manage.py collectstatic --noinput
+        chdir: /usr/src/app/
+
+    - name: apply django migrations
+      community.docker.docker_container_exec:
+        container: '{{ PROJECT_NAME }}_django'
+        command: python manage.py migrate
+        chdir: /usr/src/app/
+
+    - name: create superuser
+      community.docker.docker_container_exec:
+        container: '{{ PROJECT_NAME }}_django'
+        command: python manage.py createsuperuser --noinput
+        chdir: /usr/src/app/
+      register: create_superuser
+      failed_when:
+        - "not create_superuser.stderr == '' and 'That username is already taken' not in create_superuser.stderr"
