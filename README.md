@@ -13,7 +13,7 @@ ssh-keygen -t rsa -f ~/.ssh/ansible
 2. Create new user on each server
 
 ```
-for server in 192.168.1.105 192.168.1.207 192.168.1.236
+for server in xxx.xxx.xxx.xxx yyy.yyy.yyy.yyy ййй.ййй.ййй.ййй 
 do
     ssh "osboxes@$server" "sudo useradd -d /home/ansible -m -s /bin/bash -G sudo ansible"
 done
@@ -55,11 +55,11 @@ export $(cat .env | xargs)
 
 **SETUP INVENTORY FILE**
 
-Fill `hosts` file
+Fill `inventory/hosts` file
 
 
 **USE PLAYBOOKS**
 
 ```
-ansible-playbook -i hosts <filename>.yml
+ansible-playbook -i inventory/hosts <filename>.yml
 ```
